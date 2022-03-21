@@ -4,7 +4,7 @@
   "repository": "github:AffeJonsson/PackageNavigator",
   "displayName": "PackageNavigator",
   "description": "Allows you to navigate to external implementations when you have the source code locally available.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.65.0"
   },
@@ -12,6 +12,25 @@
     "Other"
   ],
   "contributes": {
+    "keybindings": [
+      {
+        "command": "packagenavigator.navigate",
+        "key": "ctrl+alt+oem_period",
+        "mac": "cmd+alt+oem_period"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "packagenavigator.navigate",
+          "group": "navigation"
+        }
+      ]
+    },
+    "commands": [{
+      "command": "packagenavigator.navigate",
+      "title": "Navigate to local implementation"
+    }],
     "configuration": {
       "title": "PackageNavigator",
       "properties": {

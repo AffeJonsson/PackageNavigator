@@ -69,70 +69,67 @@ function activate(context) {
         });
     };
     updateDeclarations();
-    didChangeEvent = vscode.workspace.onDidChangeConfiguration(e => {
+    didChangeEvent = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration("packagenavigator")) {
-            configs = vscode.workspace.getConfiguration("packagenavigator")["packages"];
+            configs =
+                vscode.workspace.getConfiguration("packagenavigator")["packages"];
         }
     });
     didSaveEvent = vscode.workspace.onDidSaveTextDocument((e) => {
         updateDeclarations(e);
     });
-    context.subscriptions.push(vscode.languages.registerImplementationProvider({ language: "typescriptreact" }, {
-        provideImplementation: async (document, position, token) => {
-            const targetedWordRange = document.getWordRangeAtPosition(position);
-            const targetedWord = document.getText(targetedWordRange);
-            let importFrom = "";
-            const importText = document
-                .getText()
-                .match("import.+" + targetedWord + ".+['\"](.+)['\"]");
-            if (!importText || importText.length <= 1) {
-                return undefined;
-            }
-            importFrom = importText[1];
-            const config = configs.find((c) => c[0] === importFrom);
-            if (!config) {
-                return undefined;
-            }
-            const repoPath = config[1];
-            if (!repoPath) {
-                return undefined;
-            }
-            const location = locations.get(importFrom + "|||" + targetedWord);
-            if (location) {
-                const version = localPackageVersions.get(importFrom);
-                if (version) {
-                    const folders = vscode.workspace.workspaceFolders;
-                    if (folders) {
-                        const find = {
-                            baseUri: folders[0].uri,
-                            pattern: "package.json",
-                            base: folders[0].uri.fsPath,
-                        };
-                        vscode.workspace.findFiles(find).then((files) => {
-                            if (files.length === 1) {
-                                vscode.workspace
-                                    .openTextDocument(files[0])
-                                    .then((textDocument) => {
-                                    const json = JSON.parse(textDocument.getText());
-                                    if (json["dependencies"]) {
-                                        const importVersion = json["dependencies"][importFrom];
-                                        if (importVersion &&
-                                            !importVersion.endsWith(version)) {
-                                            vscode.window.showWarningMessage("Imported package version (" +
-                                                importVersion +
-                                                ") differs from local version (" +
-                                                version +
-                                                ").");
-                                        }
+    context.subscriptions.push(vscode.commands.registerTextEditorCommand("packagenavigator.navigate", (editor) => {
+        const document = editor.document;
+        const position = editor.selection.active;
+        const targetedWordRange = document.getWordRangeAtPosition(position);
+        const targetedWord = document.getText(targetedWordRange);
+        const importText = document
+            .getText()
+            .match("import.+" + targetedWord + ".+\\s*from\\s*['\"]\\s*(.+)\\s*['\"]");
+        if (!importText || importText.length <= 1) {
+            return undefined;
+        }
+        const importFrom = importText[1];
+        const config = configs.find((c) => c[0] === importFrom);
+        if (!config) {
+            return undefined;
+        }
+        const location = locations.get(importFrom + "|||" + targetedWord);
+        if (location) {
+            const version = localPackageVersions.get(importFrom);
+            if (version) {
+                const folders = vscode.workspace.workspaceFolders;
+                if (folders) {
+                    const find = {
+                        baseUri: folders[0].uri,
+                        pattern: "package.json",
+                        base: folders[0].uri.fsPath,
+                    };
+                    vscode.workspace.findFiles(find).then((files) => {
+                        if (files.length === 1) {
+                            vscode.workspace
+                                .openTextDocument(files[0])
+                                .then((textDocument) => {
+                                const json = JSON.parse(textDocument.getText());
+                                if (json["dependencies"]) {
+                                    const importVersion = json["dependencies"][importFrom];
+                                    if (importVersion && !importVersion.endsWith(version)) {
+                                        vscode.window.showWarningMessage("Imported package version (" +
+                                            importVersion +
+                                            ") differs from local version (" +
+                                            version +
+                                            ").");
                                     }
-                                });
-                            }
-                        });
-                    }
+                                }
+                            });
+                        }
+                    });
                 }
-                return location;
             }
-        },
+            vscode.window.showTextDocument(location.uri, {
+                selection: location.range,
+            });
+        }
     }));
 }
 exports.activate = activate;
