@@ -4,7 +4,7 @@
   "repository": "github:AffeJonsson/PackageNavigator",
   "displayName": "PackageNavigator",
   "description": "Allows you to navigate to external implementations when you have the source code locally available.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "engines": {
     "vscode": "^1.65.0"
   },

@@ -1,1 +1,3 @@
 packagenavigator/node_modules
+packagenavigator/out
+packagenavigator/*.vsix

@@ -5,7 +5,7 @@ let didSaveEvent: vscode.Disposable | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   const localPackageVersions: Map<string, string> = new Map();
-  const locations: Map<string, vscode.Location> = new Map();
+  const locations: Map<string, Map<string, vscode.Location>> = new Map();
   let configs: [string, string][] =
     vscode.workspace.getConfiguration("packagenavigator")["packages"];
 
@@ -32,8 +32,13 @@ export function activate(context: vscode.ExtensionContext) {
             .indexOf(decl, m.index || 0);
           const start = textDocument.positionAt(targetIndex);
           const end = start.with(start.line, start.character + decl.length);
-          locations.set(
-            packageName + "|||" + decl,
+          let loc = locations.get(packageName);
+          if (!loc) {
+            loc = new Map();
+            locations.set(packageName, loc);
+          }
+          loc.set(
+            decl,
             new vscode.Location(newUri, new vscode.Range(start, end))
           );
         }
@@ -42,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const fileType = (await vscode.workspace.fs.stat(uri)).type;
     if (fileType === vscode.FileType.File) {
-      await handleFile(uri, uri.path.substring(uri.path.lastIndexOf("/")));
+      await handleFile(uri, uri.path.substring(uri.path.lastIndexOf("/") + 1));
       return;
     } else if (fileType !== vscode.FileType.Directory) {
       return;
@@ -77,6 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
         findDeclarationsInternal(uri, repo);
       }
     });
+
   };
 
   updateDeclarations();
@@ -84,6 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (e.affectsConfiguration("packagenavigator")) {
       configs =
         vscode.workspace.getConfiguration("packagenavigator")["packages"];
+      updateDeclarations();
     }
   });
   didSaveEvent = vscode.workspace.onDidSaveTextDocument((e) => {
@@ -100,7 +107,9 @@ export function activate(context: vscode.ExtensionContext) {
         const targetedWord = document.getText(targetedWordRange);
         const importText = document
           .getText()
-          .match("import.+" + targetedWord + ".+\\s*from\\s*['\"]\\s*(.+)\\s*['\"]");
+          .match(
+            "import.+" + targetedWord + ".+\\s*from\\s*['\"]\\s*(.+)\\s*['\"]"
+          );
         if (!importText || importText.length <= 1) {
           return undefined;
         }
@@ -110,44 +119,50 @@ export function activate(context: vscode.ExtensionContext) {
           return undefined;
         }
 
-        const location = locations.get(importFrom + "|||" + targetedWord);
-        if (location) {
-          const version = localPackageVersions.get(importFrom);
-          if (version) {
-            const folders = vscode.workspace.workspaceFolders;
-            if (folders) {
-              const find: vscode.RelativePattern = {
-                baseUri: folders[0].uri,
-                pattern: "package.json",
-                base: folders[0].uri.fsPath,
-              };
-              vscode.workspace.findFiles(find).then((files) => {
-                if (files.length === 1) {
-                  vscode.workspace
-                    .openTextDocument(files[0])
-                    .then((textDocument) => {
-                      const json = JSON.parse(textDocument.getText());
-                      if (json["dependencies"]) {
-                        const importVersion: string | undefined =
-                          json["dependencies"][importFrom];
-                        if (importVersion && !importVersion.endsWith(version)) {
-                          vscode.window.showWarningMessage(
-                            "Imported package version (" +
-                              importVersion +
-                              ") differs from local version (" +
-                              version +
-                              ")."
-                          );
+        const locationsInRepo = locations.get(importFrom);
+        if (locationsInRepo) {
+          const location = locationsInRepo.get(targetedWord);
+          if (location) {
+            const version = localPackageVersions.get(importFrom);
+            if (version) {
+              const folders = vscode.workspace.workspaceFolders;
+              if (folders) {
+                const find: vscode.RelativePattern = {
+                  baseUri: folders[0].uri,
+                  pattern: "package.json",
+                  base: folders[0].uri.fsPath,
+                };
+                vscode.workspace.findFiles(find).then((files) => {
+                  if (files.length === 1) {
+                    vscode.workspace
+                      .openTextDocument(files[0])
+                      .then((textDocument) => {
+                        const json = JSON.parse(textDocument.getText());
+                        if (json["dependencies"]) {
+                          const importVersion: string | undefined =
+                            json["dependencies"][importFrom];
+                          if (
+                            importVersion &&
+                            !importVersion.endsWith(version)
+                          ) {
+                            vscode.window.showWarningMessage(
+                              "Imported package version (" +
+                                importVersion +
+                                ") differs from local version (" +
+                                version +
+                                ")."
+                            );
+                          }
                         }
-                      }
-                    });
-                }
-              });
+                      });
+                  }
+                });
+              }
             }
+            vscode.window.showTextDocument(location.uri, {
+              selection: location.range,
+            });
           }
-          vscode.window.showTextDocument(location.uri, {
-            selection: location.range,
-          });
         }
       }
     )
