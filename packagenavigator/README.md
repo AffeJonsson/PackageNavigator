@@ -6,7 +6,7 @@ PackageNavigator allows you to navigate to implementation in external codebases 
 
 Navigate to external code with the "Navigate to local implementations" command, default keybind to Ctrl + Alt + .
 
-![navigate](https://github.com/AffeJonsson/PackageNavigator/blob/develop/packagenavigator/packagenavigator.gif)
+![navigate](https://raw.githubusercontent.com/AffeJonsson/PackageNavigator/develop/packagenavigator/packagenavigator.gif)
 
 ## Extension Settings
 
