@@ -1,6 +1,6 @@
-# PackageNavigator
+# Local Package Navigator
 
-PackageNavigator allows you to navigate to implementation in external codebases that you have locally.
+Local Package Navigator allows you to navigate to implementation in external codebases that you have locally.
 
 ## Features
 
@@ -28,8 +28,8 @@ Performance increase
 
 ### 1.1.0
 
-Change from listening to "Navigate to Implementation" to separate command, packagenavigator.navigate
+Change from listening to "Navigate to Implementation" to separate command, localpackagenavigator.navigate
 
 ### 1.0.0
 
-Initial release of PackageNavigator
+Initial release of Local Package Navigator
