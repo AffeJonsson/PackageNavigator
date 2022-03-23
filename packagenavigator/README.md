@@ -16,6 +16,16 @@ This extension contributes the following settings:
 
 ## Release Notes
 
+### 1.3.0
+
+Add support for ^1.45.0
+
+Show error if configured path doesn't exist on the system
+
+### 1.2.0
+
+Performance increase
+
 ### 1.1.0
 
 Change from listening to "Navigate to Implementation" to separate command, packagenavigator.navigate

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
 
 let didChangeEvent: vscode.Disposable | undefined;
 let didSaveEvent: vscode.Disposable | undefined;
@@ -72,17 +73,19 @@ export function activate(context: vscode.ExtensionContext) {
       const repo = config[0];
       const repoPath = config[1];
       const uri = vscode.Uri.file(repoPath);
-      if (textDocumentToUpdate) {
-        if (
-          textDocumentToUpdate.uri.toString(true).startsWith(uri.toString(true))
-        ) {
-          findDeclarationsInternal(textDocumentToUpdate.uri, repo);
+
+      if (fs.existsSync(uri.fsPath)) {
+        if (textDocumentToUpdate) {
+          if (
+            textDocumentToUpdate.uri.toString(true).startsWith(uri.toString(true))
+          ) {
+            findDeclarationsInternal(textDocumentToUpdate.uri, repo);
+          }
+        } else {
+          findDeclarationsInternal(uri, repo);
         }
-      } else {
-        findDeclarationsInternal(uri, repo);
       }
     });
-
   };
 
   updateDeclarations();
@@ -101,6 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerTextEditorCommand(
       "packagenavigator.navigate",
       (editor) => {
+        
         const document = editor.document;
         const position = editor.selection.active;
         const targetedWordRange = document.getWordRangeAtPosition(position);
@@ -118,6 +122,24 @@ export function activate(context: vscode.ExtensionContext) {
         if (!config) {
           return undefined;
         }
+        const repo = config[0];
+        const repoPath = config[1];
+        const uri = vscode.Uri.file(repoPath);
+  
+        if (!fs.existsSync(uri.fsPath)){
+          vscode.window.showErrorMessage(
+            "Path for package " +
+              repo +
+              " doesn't exist. Configured path is " +
+              repoPath,
+            "Configure"
+          ).then(action => {
+            if (action === 'Configure') {
+              vscode.commands.executeCommand('workbench.action.openSettings', 'packagenavigator');
+            }
+          });
+          return;
+        }
 
         const locationsInRepo = locations.get(importFrom);
         if (locationsInRepo) {
@@ -128,7 +150,6 @@ export function activate(context: vscode.ExtensionContext) {
               const folders = vscode.workspace.workspaceFolders;
               if (folders) {
                 const find: vscode.RelativePattern = {
-                  baseUri: folders[0].uri,
                   pattern: "package.json",
                   base: folders[0].uri.fsPath,
                 };
