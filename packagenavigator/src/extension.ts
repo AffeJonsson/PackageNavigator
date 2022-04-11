@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
     const files = await vscode.workspace.fs.readDirectory(uri);
     for (let i = 0; i < files.length; i++) {
       const [name, fileType] = files[i];
-      if (fileType === vscode.FileType.File && name === 'package.json') {
+      if (fileType === vscode.FileType.File && name === "package.json") {
         const newUri = vscode.Uri.joinPath(uri, name);
         const textDocument = await vscode.workspace.openTextDocument(newUri);
         const json = JSON.parse(textDocument.getText());
@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
         await findLocalPackageVersion(vscode.Uri.joinPath(uri, name), config);
       }
     }
-  }
+  };
 
   const findDeclarationsInternal = async (uri: vscode.Uri, config: Config) => {
     const handleFile = async (newUri: vscode.Uri, name: string) => {
@@ -77,7 +77,9 @@ export function activate(context: vscode.ExtensionContext) {
     const localPath = vscode.Uri.parse(config.localPath);
     if (
       config.excludePath &&
-      config.excludePath.some((e) => uri.path.startsWith(vscode.Uri.joinPath(localPath, e).path))
+      config.excludePath.some(
+        (e) => uri.path.indexOf(vscode.Uri.joinPath(localPath, e).path) !== -1
+      )
     ) {
       return;
     }
@@ -221,7 +223,7 @@ export function activate(context: vscode.ExtensionContext) {
                                       importVersion +
                                       ") differs from local version (" +
                                       version +
-                                      ").",
+                                      ")."
                                   );
                                 }
                               }
