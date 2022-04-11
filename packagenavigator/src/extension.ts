@@ -11,7 +11,6 @@ interface Config {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  const localPackageVersions: Map<string, string> = new Map();
   const locations: Map<
     string,
     Map<string, vscode.Location | vscode.Location[]>
@@ -20,15 +19,26 @@ export function activate(context: vscode.ExtensionContext) {
     "localPackageNavigator"
   )["packages"];
 
-  const findDeclarationsInternal = async (uri: vscode.Uri, config: Config) => {
-    const handleFile = async (newUri: vscode.Uri, name: string) => {
-      if (name === "package.json") {
+  const findLocalPackageVersion = async (uri: vscode.Uri, config: Config) => {
+    const files = await vscode.workspace.fs.readDirectory(uri);
+    for (let i = 0; i < files.length; i++) {
+      const [name, fileType] = files[i];
+      if (fileType === vscode.FileType.File && name === 'package.json') {
+        const newUri = vscode.Uri.joinPath(uri, name);
         const textDocument = await vscode.workspace.openTextDocument(newUri);
         const json = JSON.parse(textDocument.getText());
         if (json["name"] === config.packageName) {
-          localPackageVersions.set(config.packageName, json["version"]);
+          return json["version"] as string | undefined;
         }
-      } else if (name.endsWith(".ts") || name.endsWith(".tsx")) {
+      } else if (fileType === vscode.FileType.Directory) {
+        await findLocalPackageVersion(vscode.Uri.joinPath(uri, name), config);
+      }
+    }
+  }
+
+  const findDeclarationsInternal = async (uri: vscode.Uri, config: Config) => {
+    const handleFile = async (newUri: vscode.Uri, name: string) => {
+      if (name.endsWith(".ts") || name.endsWith(".tsx")) {
         const textDocument = await vscode.workspace.openTextDocument(newUri);
         const match = textDocument
           .getText()
@@ -185,41 +195,42 @@ export function activate(context: vscode.ExtensionContext) {
             if (locationsInRepo) {
               const location = locationsInRepo.get(targetedWord);
               if (location) {
-                const version = localPackageVersions.get(pack);
-                if (version) {
-                  const folders = vscode.workspace.workspaceFolders;
-                  if (folders) {
-                    const find: vscode.RelativePattern = {
-                      pattern: "package.json",
-                      base: folders[0].uri.fsPath,
-                    };
-                    vscode.workspace.findFiles(find).then((files) => {
-                      if (files.length === 1) {
-                        vscode.workspace
-                          .openTextDocument(files[0])
-                          .then((textDocument) => {
-                            const json = JSON.parse(textDocument.getText());
-                            if (json["dependencies"]) {
-                              const importVersion: string | undefined =
-                                json["dependencies"][pack];
-                              if (
-                                importVersion &&
-                                !importVersion.endsWith(version)
-                              ) {
-                                vscode.window.showWarningMessage(
-                                  "Imported package version (" +
-                                    importVersion +
-                                    ") differs from local version (" +
-                                    version +
-                                    ").", {modal: true}
-                                );
+                findLocalPackageVersion(uri, config).then((version) => {
+                  if (version) {
+                    const folders = vscode.workspace.workspaceFolders;
+                    if (folders) {
+                      const find: vscode.RelativePattern = {
+                        pattern: "package.json",
+                        base: folders[0].uri.fsPath,
+                      };
+                      vscode.workspace.findFiles(find).then((files) => {
+                        if (files.length === 1) {
+                          vscode.workspace
+                            .openTextDocument(files[0])
+                            .then((textDocument) => {
+                              const json = JSON.parse(textDocument.getText());
+                              if (json["dependencies"]) {
+                                const importVersion: string | undefined =
+                                  json["dependencies"][pack];
+                                if (
+                                  importVersion &&
+                                  !importVersion.endsWith(version)
+                                ) {
+                                  vscode.window.showWarningMessage(
+                                    "Imported package version (" +
+                                      importVersion +
+                                      ") differs from local version (" +
+                                      version +
+                                      ").",
+                                  );
+                                }
                               }
-                            }
-                          });
-                      }
-                    });
+                            });
+                        }
+                      });
+                    }
                   }
-                }
+                });
                 if (Array.isArray(location)) {
                   vscode.commands.executeCommand(
                     "editor.action.peekLocations",
