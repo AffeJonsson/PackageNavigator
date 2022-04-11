@@ -12,13 +12,45 @@ Navigate to external code with the "Navigate to local implementations" command, 
 
 This extension contributes the following settings:
 
-* `packagenavigator.packages`: Configure what packages to look for. Format is array of [packageName, localPath], e.g. [["@types/vscode", "C:/Example/vscodetypes"], ["@types/glob", "C:/Example/globtypes"]].
-
+* `localPackageNavigator.packages`: Configure what packages to look for. Format is array of.
+```
+{
+    packageName: string, 
+    localPath: string, 
+    excludePath?: string[]
+}
+```
+where packageName is the name of the package, localPath is where on your computer you have the source code, 
+and excludePath is an optional array of paths relative to localPath.
+e.g. 
+```
+[
+    {
+        "packageName": "@types/vscode", 
+        "localPath": "C:/Example/vscodetypes", 
+        "excludePath": ["/tests"]
+    }, 
+    {
+        "packageName": "@types/glob", 
+        "localPath": "C:/Example/globtypes"
+    }
+]. 
+```
 ## Release Notes
+
+### 1.5.0
+
+Add support for excluding paths in local path
+
+Peek implementation if multiple exports have the same name
+
+### 1.4.0
+
+Add support for navigating to nested exports
 
 ### 1.3.0
 
-Add support for ^1.45.0
+Add support for vscode ^1.45.0
 
 Show error if configured path doesn't exist on the system
 
@@ -28,7 +60,7 @@ Performance increase
 
 ### 1.1.0
 
-Change from listening to "Navigate to Implementation" to separate command, localpackagenavigator.navigate
+Change from listening to "Navigate to Implementation" to separate command, localPackageNavigator.navigate
 
 ### 1.0.0
 
