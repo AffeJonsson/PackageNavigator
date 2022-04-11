@@ -64,9 +64,10 @@ export function activate(context: vscode.ExtensionContext) {
       }
     };
 
+    const localPath = vscode.Uri.parse(config.localPath);
     if (
       config.excludePath &&
-      config.excludePath.some((e) => uri.path.indexOf(config.localPath + e) !== -1)
+      config.excludePath.some((e) => uri.path.startsWith(vscode.Uri.joinPath(localPath, e).path))
     ) {
       return;
     }
@@ -210,7 +211,7 @@ export function activate(context: vscode.ExtensionContext) {
                                     importVersion +
                                     ") differs from local version (" +
                                     version +
-                                    ")."
+                                    ").", {modal: true}
                                 );
                               }
                             }

@@ -12,7 +12,7 @@ Navigate to external code with the "Navigate to local implementations" command, 
 
 This extension contributes the following settings:
 
-* `localPackageNavigator.packages`: Configure what packages to look for. Format is array of.
+* `localPackageNavigator.packages`: Configure what packages to look for. Format is array of
 ```
 {
     packageName: string, 
