@@ -12,23 +12,25 @@ Navigate to external code with the "Navigate to local implementations" command, 
 
 This extension contributes the following settings:
 
+* `localPackageNavigator.fallbackToNavigate`: Wheter or not to fallback to the default "Nagivate to Implementation" when
+trying to navigate to a non-external symbol.
 * `localPackageNavigator.packages`: Configure what packages to look for. Format is array of
 ```
 {
     packageName: string, 
     localPath: string, 
-    excludePath?: string[]
+    excludePaths?: string[]
 }
 ```
 where packageName is the name of the package, localPath is where on your computer you have the source code, 
-and excludePath is an optional array of paths relative to localPath.
+and excludePaths is an optional array of paths relative to localPath.
 e.g. 
 ```
 [
     {
         "packageName": "@types/vscode", 
         "localPath": "C:/Example/vscodetypes", 
-        "excludePath": ["/tests"]
+        "excludePaths": ["/tests"]
     }, 
     {
         "packageName": "@types/glob", 
@@ -37,6 +39,12 @@ e.g.
 ]. 
 ```
 ## Release Notes
+
+### 1.6.0
+
+Add support for navigating to implementation when trying to go to local definition of a non-external symbol.
+
+Improve definition finding.
 
 ### 1.5.0
 

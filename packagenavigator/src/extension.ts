@@ -7,17 +7,20 @@ let didSaveEvent: vscode.Disposable | undefined;
 interface Config {
   packageName: string;
   localPath: string;
-  excludePath?: string[];
+  excludePaths?: string[];
 }
 
 export function activate(context: vscode.ExtensionContext) {
   const locations: Map<
     string,
-    Map<string, vscode.Location | vscode.Location[]>
+    Map<string, Map<string, vscode.Location | vscode.Location[]>>
   > = new Map();
   let configs: Config[] = vscode.workspace.getConfiguration(
     "localPackageNavigator"
   )["packages"];
+  let fallbackToNavigate: boolean = vscode.workspace.getConfiguration(
+    "localPackageNavigator"
+  )["fallbackToNavigate"];
 
   const findLocalPackageVersion = async (uri: vscode.Uri, config: Config) => {
     const files = await vscode.workspace.fs.readDirectory(uri);
@@ -38,46 +41,85 @@ export function activate(context: vscode.ExtensionContext) {
 
   const findDeclarationsInternal = async (uri: vscode.Uri, config: Config) => {
     const handleFile = async (newUri: vscode.Uri, name: string) => {
-      if (name.endsWith(".ts") || name.endsWith(".tsx")) {
-        const textDocument = await vscode.workspace.openTextDocument(newUri);
-        const match = textDocument
-          .getText()
-          .matchAll(/export\s+\w+\s+(\w+)[:;=\(\s]/g);
-        for (let m of match) {
-          const decl = m[1];
-          const targetIndex = textDocument
-            .getText()
-            .indexOf(decl, m.index || 0);
-          const start = textDocument.positionAt(targetIndex);
-          const end = start.with(start.line, start.character + decl.length);
-          let loc = locations.get(config.packageName);
-          if (!loc) {
-            loc = new Map();
-            locations.set(config.packageName, loc);
-          }
-          const current = loc.get(decl);
-          const newLoc = new vscode.Location(
-            newUri,
-            new vscode.Range(start, end)
-          );
-          if (!current) {
-            loc.set(decl, newLoc);
-          } else {
-            if (Array.isArray(current)) {
-              current.push(newLoc);
-            } else {
-              const arr = [current, newLoc];
-              loc.set(decl, arr);
+      if (
+        name.endsWith(".ts") ||
+        (name.endsWith(".tsx") && name.indexOf(".") === name.lastIndexOf("."))
+      ) {
+        vscode.commands
+          .executeCommand<(vscode.SymbolInformation & vscode.DocumentSymbol)[]>(
+            "vscode.executeDocumentSymbolProvider",
+            newUri
+          )
+          .then((res) => {
+            if (res) {
+              const func = (
+                info: (vscode.SymbolInformation & vscode.DocumentSymbol)[],
+                parent?: vscode.SymbolInformation & vscode.DocumentSymbol,
+                stack?: string
+              ) => {
+                info.forEach((r) => {
+                  if (
+                    r.kind === vscode.SymbolKind.Variable &&
+                    parent &&
+                    parent.kind === vscode.SymbolKind.Variable
+                  ) {
+                    return;
+                  }
+                  if (
+                    r.name.indexOf("[") !== -1 ||
+                    r.name.indexOf("(") !== -1 ||
+                    r.name.indexOf(".") !== -1
+                  ) {
+                    return;
+                  }
+                  let loc = locations.get(config.packageName);
+                  if (!loc) {
+                    loc = new Map();
+                    locations.set(config.packageName, loc);
+                  }
+                  const fileNameWithoutExtension = name.substring(
+                    0,
+                    name.indexOf(".")
+                  );
+                  let current = loc.get(fileNameWithoutExtension);
+                  const rLocation = new vscode.Location(
+                    r.location.uri,
+                    r.selectionRange
+                  );
+                  const stackAndName = (stack ? stack + "/" : "") + r.name;
+                  if (!current) {
+                    current = new Map();
+                    loc.set(fileNameWithoutExtension, current);
+                    current.set(stackAndName, rLocation);
+                  } else {
+                    const locations = current.get(stackAndName);
+                    if (Array.isArray(locations)) {
+                      locations.push(rLocation);
+                    } else if (locations) {
+                      const arr = [locations, rLocation];
+                      current.set(stackAndName, arr);
+                    } else {
+                      current.set(stackAndName, rLocation);
+                    }
+                  }
+                  func(
+                    r.children as (vscode.SymbolInformation &
+                      vscode.DocumentSymbol)[],
+                    r,
+                    stackAndName
+                  );
+                });
+              };
+              func(res);
             }
-          }
-        }
+          });
       }
     };
 
     const localPath = vscode.Uri.parse(config.localPath);
     if (
-      config.excludePath &&
-      config.excludePath.some(
+      config.excludePaths &&
+      config.excludePaths.some(
         (e) => uri.path.indexOf(vscode.Uri.joinPath(localPath, e).path) !== -1
       )
     ) {
@@ -107,7 +149,6 @@ export function activate(context: vscode.ExtensionContext) {
     configs.forEach((config) => {
       const repoPath = config.localPath;
       const uri = vscode.Uri.file(repoPath);
-      locations.get(config.packageName)?.clear();
 
       if (fs.existsSync(uri.fsPath)) {
         if (textDocumentToUpdate) {
@@ -116,9 +157,11 @@ export function activate(context: vscode.ExtensionContext) {
               .toString(true)
               .startsWith(uri.toString(true))
           ) {
+            locations.get(config.packageName)?.clear();
             findDeclarationsInternal(textDocumentToUpdate.uri, config);
           }
         } else {
+          locations.get(config.packageName)?.clear();
           findDeclarationsInternal(uri, config);
         }
       }
@@ -131,6 +174,9 @@ export function activate(context: vscode.ExtensionContext) {
       configs = vscode.workspace.getConfiguration("localPackageNavigator")[
         "packages"
       ];
+      fallbackToNavigate = vscode.workspace.getConfiguration(
+        "localPackageNavigator"
+      )["fallbackToNavigate"];
       updateDeclarations();
     }
   });
@@ -144,11 +190,9 @@ export function activate(context: vscode.ExtensionContext) {
       (editor) => {
         const document = editor.document;
         const position = editor.selection.active;
-        const targetedWordRange = document.getWordRangeAtPosition(position);
-        const targetedWord = document.getText(targetedWordRange);
         vscode.commands
           .executeCommand<(vscode.Location | vscode.LocationLink)[]>(
-            "vscode.executeDefinitionProvider",
+            "vscode.executeImplementationProvider",
             document.uri,
             position
           )
@@ -157,96 +201,178 @@ export function activate(context: vscode.ExtensionContext) {
               return undefined;
             }
 
+            let targetFileName: string | undefined;
+            let targetUri: vscode.Uri | undefined;
+            let targetRange: vscode.Range | undefined;
             const config = configs.find((c) => {
               return !!res.find((r) => {
-                return (
-                  (r instanceof vscode.Location
-                    ? r.uri.path.indexOf(c.packageName)
-                    : r.targetUri.path.indexOf(c.packageName)) > -1
+                if (r instanceof vscode.Location) {
+                  targetUri = r.uri;
+                  targetRange = r.range;
+                  targetFileName = r.uri.path.substring(
+                    r.uri.path.lastIndexOf("/") + 1
+                  );
+                  console.log(targetFileName);
+                  targetFileName = targetFileName.substring(
+                    0,
+                    targetFileName.indexOf(".")
+                  );
+                  return r.uri.path.indexOf(c.packageName) > -1;
+                }
+                targetUri = r.targetUri;
+                targetRange = r.targetRange;
+                targetFileName = r.targetUri.path.substring(
+                  r.targetUri.path.lastIndexOf("/") + 1
                 );
+                console.log(targetFileName);
+                targetFileName = targetFileName.substring(
+                  0,
+                  targetFileName.indexOf(".")
+                );
+                return r.targetUri.path.indexOf(c.packageName) > -1;
               });
             });
-            if (!config) {
+            if (!config || !targetFileName || !targetUri || !targetRange) {
+              if (fallbackToNavigate) {
+                vscode.commands
+                  .executeCommand<(vscode.Location | vscode.LocationLink)[]>(
+                    "vscode.executeImplementationProvider",
+                    document.uri,
+                    position
+                  )
+                  .then((res) => {
+                    if (res) {
+                      const locations = res.filter(
+                        (r) => r instanceof vscode.Location
+                      ) as vscode.Location[];
+                      if (locations.length > 0) {
+                        vscode.commands.executeCommand(
+                          "editor.action.goToLocations",
+                          locations[0].uri,
+                          locations[0].range.start,
+                          locations
+                        );
+                      }
+                    }
+                  });
+              }
               return undefined;
             }
-            const pack = config.packageName;
-            const packPath = config.localPath;
-            const uri = vscode.Uri.file(packPath);
 
-            if (!fs.existsSync(uri.fsPath)) {
-              vscode.window
-                .showErrorMessage(
-                  "Path for package " +
-                    pack +
-                    " doesn't exist. Configured path is " +
-                    packPath,
-                  "Configure"
-                )
-                .then((action) => {
-                  if (action === "Configure") {
-                    vscode.commands.executeCommand(
-                      "workbench.action.openSettings",
-                      "localPackageNavigator"
+            vscode.commands
+              .executeCommand<
+                (vscode.SymbolInformation & vscode.DocumentSymbol)[]
+              >("vscode.executeDocumentSymbolProvider", targetUri)
+              .then((res) => {
+                if (!res) {
+                  return;
+                }
+                const func = (
+                  symbols: (vscode.SymbolInformation & vscode.DocumentSymbol)[],
+                  parent: string
+                ): string | undefined => {
+                  for (const symbol of symbols) {
+                    if (symbol.selectionRange.isEqual(targetRange!)) {
+                      return (parent ? parent + "/" : "") + symbol.name;
+                    }
+                    const res = func(
+                      symbol.children as (vscode.SymbolInformation &
+                        vscode.DocumentSymbol)[],
+                      (parent ? parent + "/" : "") + symbol.name
                     );
+                    if (res) {
+                      return res;
+                    }
                   }
-                });
-              return;
-            }
+                };
 
-            const locationsInRepo = locations.get(pack);
-            if (locationsInRepo) {
-              const location = locationsInRepo.get(targetedWord);
-              if (location) {
-                findLocalPackageVersion(uri, config).then((version) => {
-                  if (version) {
-                    const folders = vscode.workspace.workspaceFolders;
-                    if (folders) {
-                      const find: vscode.RelativePattern = {
-                        pattern: "package.json",
-                        base: folders[0].uri.fsPath,
-                      };
-                      vscode.workspace.findFiles(find).then((files) => {
-                        if (files.length === 1) {
-                          vscode.workspace
-                            .openTextDocument(files[0])
-                            .then((textDocument) => {
-                              const json = JSON.parse(textDocument.getText());
-                              if (json["dependencies"]) {
-                                const importVersion: string | undefined =
-                                  json["dependencies"][pack];
-                                if (
-                                  importVersion &&
-                                  !importVersion.endsWith(version)
-                                ) {
-                                  vscode.window.showWarningMessage(
-                                    "Imported package version (" +
-                                      importVersion +
-                                      ") differs from local version (" +
-                                      version +
-                                      ")."
+                const match = func(res, "");
+                if (!match) {
+                  return;
+                }
+
+                const pack = config.packageName;
+                const packPath = config.localPath;
+                const uri = vscode.Uri.file(packPath);
+
+                if (!fs.existsSync(uri.fsPath)) {
+                  vscode.window
+                    .showErrorMessage(
+                      "Path for package " +
+                        pack +
+                        " doesn't exist. Configured path is " +
+                        packPath,
+                      "Configure"
+                    )
+                    .then((action) => {
+                      if (action === "Configure") {
+                        vscode.commands.executeCommand(
+                          "workbench.action.openSettings",
+                          "localPackageNavigator"
+                        );
+                      }
+                    });
+                  return;
+                }
+
+                const locationsInRepo = locations.get(pack);
+                if (locationsInRepo) {
+                  const location = locationsInRepo.get(targetFileName!);
+                  if (location) {
+                    findLocalPackageVersion(uri, config).then((version) => {
+                      if (version) {
+                        const folders = vscode.workspace.workspaceFolders;
+                        if (folders) {
+                          const find: vscode.RelativePattern = {
+                            pattern: "package.json",
+                            base: folders[0].uri.fsPath,
+                          };
+                          vscode.workspace.findFiles(find).then((files) => {
+                            if (files.length === 1) {
+                              vscode.workspace
+                                .openTextDocument(files[0])
+                                .then((textDocument) => {
+                                  const json = JSON.parse(
+                                    textDocument.getText()
                                   );
-                                }
-                              }
-                            });
+                                  if (json["dependencies"]) {
+                                    const importVersion: string | undefined =
+                                      json["dependencies"][pack];
+                                    if (
+                                      importVersion &&
+                                      !importVersion.endsWith(version)
+                                    ) {
+                                      vscode.window.showWarningMessage(
+                                        "Imported package version (" +
+                                          importVersion +
+                                          ") differs from local version (" +
+                                          version +
+                                          ")."
+                                      );
+                                    }
+                                  }
+                                });
+                            }
+                          });
                         }
+                      }
+                    });
+                    const inFile = location.get(match);
+                    if (Array.isArray(inFile)) {
+                      vscode.commands.executeCommand(
+                        "editor.action.peekLocations",
+                        inFile[0].uri,
+                        inFile[0].range.start,
+                        inFile
+                      );
+                    } else if (inFile) {
+                      vscode.window.showTextDocument(inFile.uri, {
+                        selection: inFile.range,
                       });
                     }
                   }
-                });
-                if (Array.isArray(location)) {
-                  vscode.commands.executeCommand(
-                    "editor.action.peekLocations",
-                    location[0].uri,
-                    location[0].range.start,
-                    location
-                  );
-                } else {
-                  vscode.window.showTextDocument(location.uri, {
-                    selection: location.range,
-                  });
                 }
-              }
-            }
+              });
           });
       }
     )
